@@ -88,3 +88,46 @@ All experiments are automatically logged to Weights & Biases, allowing you to:
 - Visualise training progress
 - Share results with others
 - Reproduce experiments
+
+
+## Here’s an example of command-line usage:
+
+```bash
+
+   # Run this entire block in a Colab cell
+!pip install wandb numpy tensorflow scikit-learn matplotlib seaborn --quiet
+
+# Remove the problematic environment variable setting
+import os
+if "WANDB_SERVICE" in os.environ:
+    del os.environ["WANDB_SERVICE"]
+
+# Proceed with login and execution
+import wandb
+wandb.login()  # You'll get a link to authenticate - follow and paste your API key here
+
+!rm -rf DeepLearningAssignment1  # Clean existing installations
+!git clone https://github.com/SaiRajesh228/DeepLearningAssignment1.git
+%cd DeepLearningAssignment1
+
+# # Run this in a new Colab cell
+# import wandb
+# wandb.login()  # Follow the authentication prompt
+
+!python train.py \
+ --wandb_entity "karapa-rajesh" \
+ --wandb_project "DeepLearning" \
+ --dataset "fashion_mnist" \
+ --epochs 10 \
+ --batch_size 64 \
+ --optimizer "adam" \
+ --learning_rate 0.001 \
+ --num_layers 3 \
+ --hidden_size 128 \
+ --activation "relu" \
+ --weight_init "xavier" \
+ --weight_decay 0.0001 \
+ --beta1 0.9 \
+ --beta2 0.999 \
+ --epsilon 1e-8
+```
