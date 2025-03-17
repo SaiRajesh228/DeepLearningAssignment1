@@ -75,7 +75,7 @@ The project is set up to be run from the command-line through `train.py`. This s
 Run the following command from the project root:
 
 ```bash
-python train.py --wandb_entity karapa-rajesh --wandb_project DeepLearningAssignment1
+python train.py --wandb_entity karapa-rajesh --wandb_project DeepLearning
 ```
 
 This command will:
