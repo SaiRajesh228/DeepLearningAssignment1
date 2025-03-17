@@ -1,103 +1,90 @@
+# Deep Learning Assignment 1: Fashion MNIST Classification
 
+This project implements a deep neural network for classifying clothing items from the Fashion MNIST dataset. The implementation includes regularization techniques and various optimization methods, with all experiments tracked using Weights & Biases.
 
-# DeepLearningAssignment1
+## Project Links
 
-## Report : https://wandb.ai/karapa-rajesh-iit-madras/DeepLearning/reports/DA6401-Assignment-1--VmlldzoxMTc3MTkyMA?accessToken=8rf7kfv3i5944oiu66rcqf2pi0al7d9dpe7jsla8i4pyo5u7jdupubz50gj9vb5k
+- **Interactive Report**: [View on Weights & Biases](https://wandb.ai/karapa-rajesh-iit-madras/DeepLearning/reports/DA6401-Assignment-1--VmlldzoxMTc3MTkyMA?accessToken=8rf7kfv3i5944oiu66rcqf2pi0al7d9dpe7jsla8i4pyo5u7jdupubz50gj9vb5k)
+- **Source Code**: [GitHub Repository](https://github.com/SaiRajesh228/DeepLearningAssignment1/)
 
-## Github Repo : https://github.com/SaiRajesh228/DeepLearningAssignment1/
+## Project Structure
 
-This project implements a deep neural network for classifying the Fashion MNIST dataset, complete with L2 regularization and several optimization techniques. All experiments are tracked using [Weights & Biases (wandb)](https://wandb.ai).
+The project consists of two main components:
 
-## Overview
+### 1. Neural Network Implementation (`model.py`)
 
-The project is split into two main components:
-- **Model & Training Logic (model.py):**  
-  This module contains the neural network implementation, including:
-  - **Neural Operations & Activation Functions:** ReLU, Sigmoid, and Tanh along with their gradients.
-  - **DeepNeuralNet Class:** Handles multi-layer network creation, forward propagation (with softmax output), cost calculation (cross-entropy or mean squared error with L2 regularization), backpropagation, and parameter updates with several optimizers (SGD, Momentum, Nesterov, RMSProp, and Adam).
-  - **Helper Functions:** For one-hot encoding, accuracy calculation, and plotting a confusion matrix.
-  - **Experiment Logging:** Functions for logging sample images, dedicated experiment runs, and hyperparameter sweeps to wandb.
-  
-- **Experiment Orchestration (train.py):**  
-  This script acts as the entry point. It:
-  - Parses command-line arguments for wandb configuration (entity and project name).
-  - Initiates logging of sample images from Fashion MNIST.
-  - Runs dedicated experiments with preset configurations.
-  - Launches a hyperparameter sweep to explore various configurations.
-  
-All training runs log metrics such as loss, training/validation accuracy, and test accuracy, as well as a confusion matrix for final evaluation.
+This module contains:
+- Neural network operations (ReLU, Sigmoid, Tanh)
+- A flexible multi-layer neural network class
+- Cost functions with L2 regularization
+- Multiple optimization algorithms (SGD, Momentum, Nesterov, RMSProp, Adam)
+- Helper functions for data processing and evaluation
 
-## Project Setup
+### 2. Experiment Runner (`train.py`)
 
-1. **Clone the Repository:**
+This script:
+- Manages the training process
+- Handles command-line arguments
+- Logs experiments to Weights & Biases
+- Runs hyperparameter sweeps
 
+## Getting Started
+
+### Prerequisites
+
+- Python 3.7+
+- pip package manager
+
+### Installation
+
+1. Clone the repository:
    ```bash
    git clone https://github.com/SaiRajesh228/DeepLearningAssignment1.git
    cd DeepLearningAssignment1
    ```
 
-2. **Install Dependencies:**
-
-   Ensure you have Python (3.7 or above) installed, then install the required packages:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Log in to Weights & Biases:**
-
-   Before running the training script, log in to wandb using:
-
+2. Log in to Weights & Biases:
    ```bash
    wandb login
    ```
 
-## Training and Evaluation
+### Running the Project
 
-- **Training Process:**  
-  The training pipeline involves:
-  - **Data Preparation:** The Fashion MNIST dataset is loaded and normalized, with labels converted to one-hot encoding. A validation split is created from the training data.
-  - **Forward Propagation:** The model computes outputs using the appropriate activation functions in hidden layers and softmax in the output layer.
-  - **Cost Computation:** The loss is computed using cross-entropy or mean squared error, augmented by an L2 regularization term to help prevent overfitting.
-  - **Backward Propagation:** Gradients are computed via backpropagation, including adjustments for L2 regularization.
-  - **Parameter Update:** The model supports several optimizers (SGD, Momentum, Nesterov, RMSProp, Adam) for updating weights and biases.
-  - **Logging:** After each epoch, training and validation accuracy, as well as the average loss, are logged to wandb.
-
-- **Evaluation:**  
-  After training, the model is evaluated on the test set:
-  - **Final Accuracy:** The test set is passed through the model to compute the final classification accuracy.
-  - **Confusion Matrix:** A confusion matrix is generated and logged to provide insight into which classes are being misclassified.
-
-## Running the Project via Command-Line
-
-The project is set up to be run from the command-line through `train.py`. This script requires two command-line arguments:
-- **--wandb_entity:** Your wandb username or team name.  
-  In this case, use your wandb entity (e.g., `karapa-rajesh`).
-- **--wandb_project:** The wandb project name.  
-  Here, use `DeepLearningAssignment1`.
-
-### Example Command
-
-Run the following command from the project root:
+Execute the training script with your Weights & Biases credentials:
 
 ```bash
-python train.py --wandb_entity karapa-rajesh --wandb_project DeepLearning
+python train.py --wandb_entity YOUR_USERNAME --wandb_project DeepLearning
 ```
 
-This command will:
-1. Log sample images from the Fashion MNIST dataset.
-2. Execute a series of dedicated experiments with pre-configured settings.
-3. Initiate a hyperparameter sweep to optimize the model's performance.
+## Training Process
 
-All logs and metrics will be sent to your wandb dashboard under the project **DeepLearningAssignment1**.
+The training pipeline:
+1. Loads and preprocesses the Fashion MNIST dataset
+2. Trains the neural network using forward and backward propagation
+3. Applies regularization to prevent overfitting
+4. Updates model parameters using the selected optimization algorithm
+5. Logs metrics and visualisations to Weights & Biases
 
-## Additional Notes
+## Evaluation
 
-- **Extensibility:**  
-  The code is modular. You can adjust the network architecture, training parameters, and experiment configurations in the `model.py` file without changing the command-line interface in `train.py`.
+After training, the model is evaluated by:
+- Calculating accuracy on the test set
+- Generating a confusion matrix to understand classification errors
+- Visualising results in the Weights & Biases dashboard
 
-- **Reproducibility:**  
-  The clear separation between model logic and experiment orchestration makes it easy to reproduce the experiments and share them with collaborators.
+## Customisation
 
+The codebase is designed to be flexible. You can modify:
+- Network architecture (number and size of layers)
+- Activation functions
+- Optimization algorithms
+- Regularization strength
+- Learning rate and other hyperparameters
 
+## Experiment Tracking
 
+All experiments are automatically logged to Weights & Biases, allowing you to:
+- Compare different model configurations
+- Visualise training progress
+- Share results with others
+- Reproduce experiments
