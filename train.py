@@ -8,9 +8,7 @@ from sklearn.model_selection import train_test_split
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-# Configure environment for Colab compatibility
-os.environ["WANDB_SERVICE"] = "false"
-os.environ["WANDB_START_METHOD"] = "thread"
+# Remove problematic environment variable settings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # ----------------------- Neural Operations -----------------------
@@ -57,7 +55,8 @@ class DeepNeuralNet:
         dims = [input_dim] + hidden_dims + [output_dim]
         for i in range(self.layer_count + 1):
             if init_scheme == "xavier":
-                scale = np.sqrt(2.0 / (dims[i] + dims[i+1])) if activation in ["tanh", "sigmoid"] else np.sqrt(2.0 / dims[i])
+                # Use different scaling based on activation type
+                scale = np.sqrt(2.0 / (dims[i] + dims[i+1])) if self.activation in ["tanh", "sigmoid"] else np.sqrt(2.0 / dims[i])
                 W = np.random.randn(dims[i], dims[i+1]) * scale
             else:
                 W = np.random.randn(dims[i], dims[i+1]) * 0.01
@@ -74,6 +73,7 @@ class DeepNeuralNet:
             Z = A.dot(self.weights[idx]) + self.biases[idx]
             self.z_records.append(Z)
             if idx == self.layer_count:
+                # Softmax for output layer
                 shifted = Z - np.max(Z, axis=1, keepdims=True)
                 exp = np.exp(shifted)
                 A = exp / np.sum(exp, axis=1, keepdims=True)
@@ -110,7 +110,6 @@ class DeepNeuralNet:
             else:
                 _, grad_func = neural_ops[self.activation]
                 dZ = delta * grad_func(self.z_records[idx])
-
             prev_act = self.a_records[idx]
             grad_weights[idx] = prev_act.T.dot(dZ) / m
             grad_biases[idx] = np.sum(dZ, axis=0, keepdims=True) / m
@@ -150,8 +149,40 @@ class DeepNeuralNet:
                 self.weights[i] -= lr * states["momentum"]["v_w"][i]
                 states["momentum"]["v_b"][i] = momentum * states["momentum"]["v_b"][i] + grad_b[i]
                 self.biases[i] -= lr * states["momentum"]["v_b"][i]
-
-        # Other optimizers implementations remain similar...
+        
+        elif optim == "adam":
+            if "adam" not in states:
+                states["adam"] = {
+                    "m_w": [np.zeros_like(w) for w in self.weights],
+                    "v_w": [np.zeros_like(w) for w in self.weights],
+                    "m_b": [np.zeros_like(b) for b in self.biases],
+                    "v_b": [np.zeros_like(b) for b in self.biases],
+                    "t": 0
+                }
+            
+            states["adam"]["t"] += 1
+            t = states["adam"]["t"]
+            
+            for i in range(self.layer_count + 1):
+                # Update biased first moment estimate
+                states["adam"]["m_w"][i] = beta1 * states["adam"]["m_w"][i] + (1 - beta1) * grad_w[i]
+                states["adam"]["m_b"][i] = beta1 * states["adam"]["m_b"][i] + (1 - beta1) * grad_b[i]
+                
+                # Update biased second raw moment estimate
+                states["adam"]["v_w"][i] = beta2 * states["adam"]["v_w"][i] + (1 - beta2) * (grad_w[i]**2)
+                states["adam"]["v_b"][i] = beta2 * states["adam"]["v_b"][i] + (1 - beta2) * (grad_b[i]**2)
+                
+                # Compute bias-corrected first moment estimate
+                m_w_corrected = states["adam"]["m_w"][i] / (1 - beta1**t)
+                m_b_corrected = states["adam"]["m_b"][i] / (1 - beta1**t)
+                
+                # Compute bias-corrected second raw moment estimate
+                v_w_corrected = states["adam"]["v_w"][i] / (1 - beta2**t)
+                v_b_corrected = states["adam"]["v_b"][i] / (1 - beta2**t)
+                
+                # Update parameters
+                self.weights[i] -= lr * m_w_corrected / (np.sqrt(v_w_corrected) + eps)
+                self.biases[i] -= lr * m_b_corrected / (np.sqrt(v_b_corrected) + eps)
 
         return states
 
@@ -159,14 +190,14 @@ class DeepNeuralNet:
 def main():
     parser = argparse.ArgumentParser(description="Train a neural network on Fashion MNIST/MNIST")
     
-    # Add all command-line arguments
+    # Command-line arguments
     parser.add_argument("-wp", "--wandb_project", required=True, help="Weights & Biases project name")
     parser.add_argument("-we", "--wandb_entity", required=True, help="Weights & Biases entity")
     parser.add_argument("-d", "--dataset", default="fashion_mnist", choices=["mnist", "fashion_mnist"])
     parser.add_argument("-e", "--epochs", type=int, default=10)
     parser.add_argument("-b", "--batch_size", type=int, default=64)
     parser.add_argument("-l", "--loss", default="cross_entropy", choices=["mean_squared_error", "cross_entropy"])
-    parser.add_argument("-o", "--optimizer", default="adam", choices=["sgd", "momentum", "nag", "rmsprop", "adam", "nadam"])
+    parser.add_argument("-o", "--optimizer", default="adam", choices=["sgd", "momentum", "adam"])
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.001)
     parser.add_argument("-m", "--momentum", type=float, default=0.9)
     parser.add_argument("-beta", "--beta", type=float, default=0.9)
@@ -181,13 +212,23 @@ def main():
     
     args = parser.parse_args()
 
-    # Initialize WandB
-    wandb.init(
-        project=args.wandb_project,
-        entity=args.wandb_entity,
-        config=vars(args),
-        name=f"{args.optimizer}-lr{args.learning_rate}-bs{args.batch_size}"
-    )
+    # Initialize WandB logging
+    try:
+        wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            config=vars(args),
+            name=f"{args.optimizer}-lr{args.learning_rate}-bs{args.batch_size}"
+        )
+        wandb_run = wandb
+    except wandb.errors.CommError:
+        print("Error: Could not access the specified W&B project. Running without W&B logging.")
+        class DummyWandb:
+            def log(self, *args, **kwargs):
+                pass
+            def finish(self):
+                pass
+        wandb_run = DummyWandb()
 
     # Load and preprocess data
     load_fn = fashion_mnist.load_data if args.dataset == "fashion_mnist" else mnist.load_data
@@ -244,26 +285,43 @@ def main():
         val_outputs = model.predict(X_val)
         val_acc = np.mean(np.argmax(val_outputs, axis=1) == np.argmax(y_val, axis=1))
         
-        wandb.log({
+        log_data = {
             "epoch": epoch + 1,
             "loss": avg_loss,
             "val_accuracy": val_acc
-        })
-
+        }
+        
+        print(f"Epoch {epoch+1}/{args.epochs}, Loss: {avg_loss:.4f}, Val Accuracy: {val_acc:.4f}")
+        wandb_run.log(log_data)
+    
     # Final evaluation
     test_outputs = model.predict(X_test)
     test_acc = np.mean(np.argmax(test_outputs, axis=1) == np.argmax(y_test, axis=1))
-    wandb.log({"test_accuracy": test_acc})
+    
+    print(f"Test Accuracy: {test_acc:.4f}")
+    wandb_run.log({"test_accuracy": test_acc})
     
     # Confusion matrix
     cm = confusion_matrix(np.argmax(y_test, axis=1), np.argmax(test_outputs, axis=1))
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
     plt.title("Confusion Matrix")
-    wandb.log({"confusion_matrix": wandb.Image(plt)})
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    
+    # Save confusion matrix locally instead of directly to wandb
+    plt.savefig("confusion_matrix.png")
     plt.close()
-
-    wandb.finish()
+    
+    try:
+        wandb_run.log({"confusion_matrix": wandb.Image("confusion_matrix.png")})
+    except Exception:
+        print("Could not log confusion matrix to W&B")
+    
+    try:
+        wandb_run.finish()
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     main()
