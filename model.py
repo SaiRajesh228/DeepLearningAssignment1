@@ -33,11 +33,13 @@ neural_ops = {
 }
 
 # -----------------------
-# Enhanced Deep Neural Network Class with L2 Regularization
+# Deep Neural Network with L2 Regularization
 class DeepNeuralNet:
-    def __init__(self, input_dim, hidden_dims, output_dim, activation="relu", init_scheme="Xavier"):
+    def __init__(self, input_dim, hidden_dims, output_dim, activation="relu", 
+                 init_scheme="Xavier", loss_type="cross_entropy"):
         self.layer_count = len(hidden_dims) + 1
         self.activation = activation
+        self.loss_type = loss_type
         self.weights = []
         self.biases = []
 
@@ -46,7 +48,7 @@ class DeepNeuralNet:
             if init_scheme == "Xavier":
                 if activation in ["tanh", "sigmoid"]:
                     scale = np.sqrt(2. / (dims[i] + dims[i+1]))
-                else:  # For ReLU
+                else:  # ReLU
                     scale = np.sqrt(2. / dims[i])
                 W = np.random.randn(dims[i], dims[i+1]) * scale
             else:  # Random initialization
@@ -64,10 +66,12 @@ class DeepNeuralNet:
             Z = A.dot(self.weights[idx]) + self.biases[idx]
             self.z_records.append(Z)
             if idx == self.layer_count - 1:
-                # Softmax for final layer
-                shifted = Z - np.max(Z, axis=1, keepdims=True)
-                exp = np.exp(shifted)
-                A = exp / np.sum(exp, axis=1, keepdims=True)
+                if self.loss_type == "cross_entropy":
+                    shifted = Z - np.max(Z, axis=1, keepdims=True)
+                    exp = np.exp(shifted)
+                    A = exp / np.sum(exp, axis=1, keepdims=True)
+                else:
+                    A = Z  # Linear activation for MSE
             else:
                 A = activate(Z)
             self.a_records.append(A)
@@ -79,7 +83,6 @@ class DeepNeuralNet:
             cost = -np.sum(Y_real * np.log(Y_hat + 1e-8)) / m
         elif cost_type == "mean_squared_error":
             cost = np.sum((Y_real - Y_hat)**2) / (2 * m)
-        # L2 Regularization
         if weight_decay > 0:
             l2_penalty = sum(np.sum(w**2) for w in self.weights)
             cost += (weight_decay / (2 * m)) * l2_penalty
@@ -94,7 +97,7 @@ class DeepNeuralNet:
         if cost_type == "cross_entropy":
             delta = final_act - Y
         elif cost_type == "mean_squared_error":
-            delta = final_act - Y
+            delta = (final_act - Y)
 
         for idx in reversed(range(self.layer_count)):
             if idx == self.layer_count - 1:
@@ -105,7 +108,6 @@ class DeepNeuralNet:
             prev_act = self.a_records[idx]
             grad_weights[idx] = prev_act.T.dot(dZ) / m
             grad_biases[idx] = np.sum(dZ, axis=0, keepdims=True) / m
-            # L2 gradient
             if weight_decay > 0:
                 grad_weights[idx] += (weight_decay / m) * self.weights[idx]
             if idx > 0:
@@ -211,7 +213,7 @@ def log_confusion_matrix(Y_est, y_real, classes):
     plt.close()
 
 # -----------------------
-# Question 1: Sample Images
+# Question 1: Log sample images
 def log_q1_samples():
     (train_X, train_y), _ = fashion_mnist.load_data()
     class_names = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
@@ -229,8 +231,7 @@ def log_q1_samples():
 
 # -----------------------
 # Dedicated Question 2 Logging
-def log_q2_experiments():
-    """Execute specific experiments for Question 2 requirements"""
+def log_q2_experiments(entity, project):
     q2_configs = [
         {
             "name": "Q2a_Sigmoid_NoReg",
@@ -280,22 +281,15 @@ def log_q2_experiments():
     ]
 
     for exp in q2_configs:
-        with wandb.init(project=wandb.config.get("project", "DL-Assignment"),
-                        name=exp["name"],
-                        config=exp["config"],
-                        tags=["Question2"]):
+        with wandb.init(entity=entity, project=project, name=exp["name"], 
+                      config=exp["config"], tags=["Question2"]):
             execute_training()
-        # No extra wandb.finish() needed when using the context manager
+        wandb.finish()
 
 # -----------------------
 # Enhanced Training Procedure with L2 Regularization
 def execute_training():
-    # Check if a run is active; if not, initialize one.
-    if wandb.run is None:
-        wandb.init(project=wandb.config.get("project", "DL-Assignment"))
     cfg = wandb.config
-
-    # Load and prepare data
     (train_X, train_y), (test_X, test_y) = fashion_mnist.load_data()
     train_X = train_X.reshape(train_X.shape[0], -1) / 255.0
     test_X = test_X.reshape(test_X.shape[0], -1) / 255.0
@@ -308,18 +302,17 @@ def execute_training():
     val_X, val_y_oh = train_X[val_split:], train_y_oh[val_split:]
     train_X, train_y_oh = train_X[:val_split], train_y_oh[:val_split]
 
-    # Model initialization
     input_dim = train_X.shape[1]
     hidden_arch = [cfg.hiddennodes] * cfg.hiddenlayers
     model = DeepNeuralNet(input_dim, hidden_arch, num_classes,
-                          activation=cfg.activation_func,
-                          init_scheme=cfg.initializer)
+                        activation=cfg.activation_func,
+                        init_scheme=cfg.initializer,
+                        loss_type=cfg.loss)
 
     optimizer_states = {}
     grad_clip_value = 1.0
 
     for epoch in range(cfg.num_epochs):
-        # Shuffle training data
         shuffle_idx = np.random.permutation(train_X.shape[0])
         train_X = train_X[shuffle_idx]
         train_y_oh = train_y_oh[shuffle_idx]
@@ -333,36 +326,29 @@ def execute_training():
             X_batch = train_X[start:end]
             y_batch = train_y_oh[start:end]
 
-            # Forward pass
             outputs = model.predict(X_batch)
             loss = model.calculate_cost(outputs, y_batch,
-                                        cost_type=cfg.loss,
-                                        weight_decay=cfg.weight_decay)
+                                      cost_type=cfg.loss,
+                                      weight_decay=cfg.weight_decay)
             epoch_loss += loss
 
-            # Backward pass
             grad_w, grad_b = model.compute_gradients(X_batch, y_batch,
-                                                     cost_type=cfg.loss,
-                                                     weight_decay=cfg.weight_decay)
-
-            # Gradient clipping
+                                                   cost_type=cfg.loss,
+                                                   weight_decay=cfg.weight_decay)
             for i in range(len(grad_w)):
                 grad_w[i] = np.clip(grad_w[i], -grad_clip_value, grad_clip_value)
                 grad_b[i] = np.clip(grad_b[i], -grad_clip_value, grad_clip_value)
 
-            # Parameter update
             optimizer_states = model.adjust_params(grad_w, grad_b, cfg.opt, cfg, optimizer_states)
 
         avg_loss = epoch_loss / batches
-
-        # Training and validation metrics
         train_outputs = model.predict(train_X)
         train_acc = get_accuracy(train_outputs, train_y_oh)
         val_outputs = model.predict(val_X)
         val_acc = get_accuracy(val_outputs, val_y_oh)
 
         wandb.log({
-            "epoch": epoch + 1,
+            "epoch": epoch+1,
             "loss": avg_loss,
             "train_accuracy": train_acc,
             "val_accuracy": val_acc
@@ -372,7 +358,6 @@ def execute_training():
     final_acc = get_accuracy(test_outputs, test_y_oh)
     wandb.log({"test_accuracy": final_acc})
     log_confusion_matrix(test_outputs, test_y, [str(i) for i in range(num_classes)])
-    wandb.finish()
 
 # -----------------------
 # Question 2 Sweep Configuration
