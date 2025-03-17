@@ -26,7 +26,7 @@ All training runs log metrics such as loss, training/validation accuracy, and te
 1. **Clone the Repository:**
 
    ```bash
-   git clone https://github.com/your_username/DeepLearningAssignment1.git
+   git clone https://github.com/SaiRajesh228/DeepLearningAssignment1.git
    cd DeepLearningAssignment1
    ```
 
