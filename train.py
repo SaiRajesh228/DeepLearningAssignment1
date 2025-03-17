@@ -4,31 +4,38 @@ import numpy as np
 import wandb
 from keras.datasets import mnist, fashion_mnist
 from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-# Configure environment for Colab
+# Configure environment for Colab compatibility
 os.environ["WANDB_SERVICE"] = "false"
 os.environ["WANDB_START_METHOD"] = "thread"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# -----------------------
-# Neural operations
+# ----------------------- Neural Operations -----------------------
 def identity(z):
     return z
+
 def identity_grad(z):
     return np.ones_like(z)
+
 def linear(z):
     return np.maximum(0, z)
+
 def linear_grad(z):
     return (z > 0) * 1.0
+
 def logistic(z):
     return 1 / (1 + np.exp(-z))
+
 def logistic_grad(z):
     s = logistic(z)
     return s * (1 - s)
+
 def hyperbolic(z):
     return np.tanh(z)
+
 def hyperbolic_grad(z):
     return 1 - np.tanh(z)**2
 
@@ -39,8 +46,7 @@ neural_ops = {
     "tanh": (hyperbolic, hyperbolic_grad)
 }
 
-# -----------------------
-# Enhanced Deep Neural Network Class
+# ----------------------- Neural Network Class -----------------------
 class DeepNeuralNet:
     def __init__(self, input_dim, hidden_dims, output_dim, activation="relu", init_scheme="random"):
         self.layer_count = len(hidden_dims)
@@ -68,7 +74,6 @@ class DeepNeuralNet:
             Z = A.dot(self.weights[idx]) + self.biases[idx]
             self.z_records.append(Z)
             if idx == self.layer_count:
-                # Softmax for output layer
                 shifted = Z - np.max(Z, axis=1, keepdims=True)
                 exp = np.exp(shifted)
                 A = exp / np.sum(exp, axis=1, keepdims=True)
@@ -146,77 +151,17 @@ class DeepNeuralNet:
                 states["momentum"]["v_b"][i] = momentum * states["momentum"]["v_b"][i] + grad_b[i]
                 self.biases[i] -= lr * states["momentum"]["v_b"][i]
 
-        # [Other optimizers implementation remains same...]
+        # Other optimizers implementations remain similar...
 
         return states
 
-# -----------------------
-# Helper Utilities
-def encode_labels(y, num_labels):
-    return np.eye(num_labels)[y]
-
-def get_accuracy(Y_est, Y_actual):
-    return np.mean(np.argmax(Y_est, axis=1) == np.argmax(Y_actual, axis=1))
-
-def log_confusion_matrix(Y_est, y_real, classes):
-    cm = confusion_matrix(y_real, np.argmax(Y_est, axis=1))
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
-                xticklabels=classes, yticklabels=classes)
-    plt.title("Confusion Matrix")
-    wandb.log({"confusion_matrix": wandb.Image(plt)})
-    plt.close()
-
-def main(args):
-    # Load and prepare data
-    load_fn = fashion_mnist.load_data if args.dataset == "fashion_mnist" else mnist.load_data
-    (train_X, train_y), (test_X, test_y) = load_fn()
+# ----------------------- Main Training Procedure -----------------------
+def main():
+    parser = argparse.ArgumentParser(description="Train a neural network on Fashion MNIST/MNIST")
     
-    # Preprocess data
-    def preprocess(X, y):
-        return X.reshape(X.shape[0], -1).astype(np.float32) / 255.0, encode_labels(y, 10)
-    
-    X_train, y_train = preprocess(train_X, train_y)
-    X_test, y_test = preprocess(test_X, test_y)
-    
-    # Train/validation split
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train, y_train, test_size=0.1, random_state=42
-    )
-
-    # Initialize model
-    model = DeepNeuralNet(
-        input_dim=X_train.shape[1],
-        hidden_dims=[args.hidden_size] * args.num_layers,
-        output_dim=10,
-        activation=args.activation,
-        init_scheme=args.weight_init
-    )
-
-    # WandB initialization
-    wandb.init(
-        project=args.wandb_project,
-        entity=args.wandb_entity,
-        config=vars(args),
-        name=f"{args.optimizer}-lr{args.learning_rate}-bs{args.batch_size}"
-    )
-
-    # Training loop
-    for epoch in range(args.epochs):
-        # Training steps...
-        # Validation and logging...
-    
-    # Final evaluation
-    test_outputs = model.predict(X_test)
-    test_acc = get_accuracy(test_outputs, y_test)
-    wandb.log({"test_accuracy": test_acc})
-    log_confusion_matrix(test_outputs, np.argmax(y_test, axis=1), 
-                        [str(i) for i in range(10)])
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-wp", "--wandb_project", required=True)
-    parser.add_argument("-we", "--wandb_entity", required=True)
+    # Add all command-line arguments
+    parser.add_argument("-wp", "--wandb_project", required=True, help="Weights & Biases project name")
+    parser.add_argument("-we", "--wandb_entity", required=True, help="Weights & Biases entity")
     parser.add_argument("-d", "--dataset", default="fashion_mnist", choices=["mnist", "fashion_mnist"])
     parser.add_argument("-e", "--epochs", type=int, default=10)
     parser.add_argument("-b", "--batch_size", type=int, default=64)
@@ -235,7 +180,90 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--activation", default="relu", choices=["identity", "sigmoid", "tanh", "relu"])
     
     args = parser.parse_args()
+
+    # Initialize WandB
+    wandb.init(
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        config=vars(args),
+        name=f"{args.optimizer}-lr{args.learning_rate}-bs{args.batch_size}"
+    )
+
+    # Load and preprocess data
+    load_fn = fashion_mnist.load_data if args.dataset == "fashion_mnist" else mnist.load_data
+    (train_X, train_y), (test_X, test_y) = load_fn()
+
+    def preprocess(X, y):
+        X = X.reshape(X.shape[0], -1).astype(np.float32) / 255.0
+        y = np.eye(10)[y]
+        return X, y
+
+    X_train, y_train = preprocess(train_X, train_y)
+    X_test, y_test = preprocess(test_X, test_y)
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.1, random_state=42)
+
+    # Initialize model
+    model = DeepNeuralNet(
+        input_dim=X_train.shape[1],
+        hidden_dims=[args.hidden_size] * args.num_layers,
+        output_dim=10,
+        activation=args.activation,
+        init_scheme=args.weight_init
+    )
+
+    # Training loop
+    optimizer_states = {}
+    for epoch in range(args.epochs):
+        # Shuffle training data
+        indices = np.random.permutation(X_train.shape[0])
+        X_train = X_train[indices]
+        y_train = y_train[indices]
+
+        epoch_loss = 0.0
+        num_batches = X_train.shape[0] // args.batch_size
+
+        for batch in range(num_batches):
+            start = batch * args.batch_size
+            end = start + args.batch_size
+            X_batch = X_train[start:end]
+            y_batch = y_train[start:end]
+
+            # Forward pass
+            outputs = model.predict(X_batch)
+            loss = model.calculate_cost(outputs, y_batch, args.loss, args.weight_decay)
+            epoch_loss += loss
+
+            # Backward pass
+            grad_w, grad_b = model.compute_gradients(X_batch, y_batch, args.loss, args.weight_decay)
+
+            # Update parameters
+            optimizer_states = model.adjust_params(grad_w, grad_b, args.optimizer, args, optimizer_states)
+
+        # Validation and logging
+        avg_loss = epoch_loss / num_batches
+        val_outputs = model.predict(X_val)
+        val_acc = np.mean(np.argmax(val_outputs, axis=1) == np.argmax(y_val, axis=1))
+        
+        wandb.log({
+            "epoch": epoch + 1,
+            "loss": avg_loss,
+            "val_accuracy": val_acc
+        })
+
+    # Final evaluation
+    test_outputs = model.predict(X_test)
+    test_acc = np.mean(np.argmax(test_outputs, axis=1) == np.argmax(y_test, axis=1))
+    wandb.log({"test_accuracy": test_acc})
     
-    # WandB login
-    wandb.login()
-    main(args)
+    # Confusion matrix
+    cm = confusion_matrix(np.argmax(y_test, axis=1), np.argmax(test_outputs, axis=1))
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    plt.title("Confusion Matrix")
+    wandb.log({"confusion_matrix": wandb.Image(plt)})
+    plt.close()
+
+    wandb.finish()
+
+if __name__ == "__main__":
+    main()
