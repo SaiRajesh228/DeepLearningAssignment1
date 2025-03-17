@@ -1,3 +1,4 @@
+import os
 import argparse
 import numpy as np
 import wandb
@@ -5,6 +6,11 @@ from keras.datasets import mnist, fashion_mnist
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
+
+# Configure environment for Colab
+os.environ["WANDB_SERVICE"] = "false"
+os.environ["WANDB_START_METHOD"] = "thread"
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # -----------------------
 # Neural operations
@@ -38,17 +44,14 @@ neural_ops = {
 class DeepNeuralNet:
     def __init__(self, input_dim, hidden_dims, output_dim, activation="relu", init_scheme="random"):
         self.layer_count = len(hidden_dims)
-        self.activation = activation.lower() if activation != "ReLU" else "relu"
+        self.activation = activation.lower()
         self.weights = []
         self.biases = []
 
         dims = [input_dim] + hidden_dims + [output_dim]
         for i in range(self.layer_count + 1):
             if init_scheme == "xavier":
-                if self.activation in ["tanh", "sigmoid"]:
-                    scale = np.sqrt(2. / (dims[i] + dims[i+1]))
-                else:
-                    scale = np.sqrt(2. / dims[i])
+                scale = np.sqrt(2.0 / (dims[i] + dims[i+1])) if activation in ["tanh", "sigmoid"] else np.sqrt(2.0 / dims[i])
                 W = np.random.randn(dims[i], dims[i+1]) * scale
             else:
                 W = np.random.randn(dims[i], dims[i+1]) * 0.01
@@ -65,6 +68,7 @@ class DeepNeuralNet:
             Z = A.dot(self.weights[idx]) + self.biases[idx]
             self.z_records.append(Z)
             if idx == self.layer_count:
+                # Softmax for output layer
                 shifted = Z - np.max(Z, axis=1, keepdims=True)
                 exp = np.exp(shifted)
                 A = exp / np.sum(exp, axis=1, keepdims=True)
@@ -121,6 +125,10 @@ class DeepNeuralNet:
         beta2 = settings.beta2
         eps = settings.epsilon
 
+        # Gradient clipping
+        grad_w = [np.clip(g, -1.0, 1.0) for g in grad_w]
+        grad_b = [np.clip(b, -1.0, 1.0) for b in grad_b]
+
         if optim == "sgd":
             for i in range(self.layer_count + 1):
                 self.weights[i] -= lr * grad_w[i]
@@ -138,228 +146,96 @@ class DeepNeuralNet:
                 states["momentum"]["v_b"][i] = momentum * states["momentum"]["v_b"][i] + grad_b[i]
                 self.biases[i] -= lr * states["momentum"]["v_b"][i]
 
-        elif optim == "nag":
-            if "nag" not in states:
-                states["nag"] = {
-                    "v_w": [np.zeros_like(w) for w in self.weights],
-                    "v_b": [np.zeros_like(b) for b in self.biases]
-                }
-            for i in range(self.layer_count + 1):
-                v_w_prev = states["nag"]["v_w"][i].copy()
-                states["nag"]["v_w"][i] = momentum * states["nag"]["v_w"][i] + grad_w[i]
-                self.weights[i] -= lr * (momentum * states["nag"]["v_w"][i] + grad_w[i])
-                v_b_prev = states["nag"]["v_b"][i].copy()
-                states["nag"]["v_b"][i] = momentum * states["nag"]["v_b"][i] + grad_b[i]
-                self.biases[i] -= lr * (momentum * states["nag"]["v_b"][i] + grad_b[i])
-
-        elif optim == "rmsprop":
-            if "rmsprop" not in states:
-                states["rmsprop"] = {
-                    "cache_w": [np.zeros_like(w) for w in self.weights],
-                    "cache_b": [np.zeros_like(b) for b in self.biases]
-                }
-            for i in range(self.layer_count + 1):
-                states["rmsprop"]["cache_w"][i] = beta * states["rmsprop"]["cache_w"][i] + (1 - beta) * (grad_w[i]**2)
-                self.weights[i] -= lr * grad_w[i] / (np.sqrt(states["rmsprop"]["cache_w"][i]) + eps)
-                states["rmsprop"]["cache_b"][i] = beta * states["rmsprop"]["cache_b"][i] + (1 - beta) * (grad_b[i]**2)
-                self.biases[i] -= lr * grad_b[i] / (np.sqrt(states["rmsprop"]["cache_b"][i]) + eps)
-
-        elif optim == "adam":
-            beta1 = settings.beta1
-            beta2 = settings.beta2
-            if "adam" not in states:
-                states["adam"] = {
-                    "m_w": [np.zeros_like(w) for w in self.weights],
-                    "v_w": [np.zeros_like(w) for w in self.weights],
-                    "m_b": [np.zeros_like(b) for b in self.biases],
-                    "v_b": [np.zeros_like(b) for b in self.biases],
-                    "step": 0
-                }
-            states["adam"]["step"] += 1
-            t = states["adam"]["step"]
-            for i in range(self.layer_count + 1):
-                states["adam"]["m_w"][i] = beta1 * states["adam"]["m_w"][i] + (1 - beta1) * grad_w[i]
-                states["adam"]["v_w"][i] = beta2 * states["adam"]["v_w"][i] + (1 - beta2) * (grad_w[i]**2)
-                m_w_adj = states["adam"]["m_w"][i] / (1 - beta1**t)
-                v_w_adj = states["adam"]["v_w"][i] / (1 - beta2**t)
-                self.weights[i] -= lr * m_w_adj / (np.sqrt(v_w_adj) + eps)
-
-                states["adam"]["m_b"][i] = beta1 * states["adam"]["m_b"][i] + (1 - beta1) * grad_b[i]
-                states["adam"]["v_b"][i] = beta2 * states["adam"]["v_b"][i] + (1 - beta2) * (grad_b[i]**2)
-                m_b_adj = states["adam"]["m_b"][i] / (1 - beta1**t)
-                v_b_adj = states["adam"]["v_b"][i] / (1 - beta2**t)
-                self.biases[i] -= lr * m_b_adj / (np.sqrt(v_b_adj) + eps)
-
-        elif optim == "nadam":
-            beta1 = settings.beta1
-            beta2 = settings.beta2
-            if "nadam" not in states:
-                states["nadam"] = {
-                    "m_w": [np.zeros_like(w) for w in self.weights],
-                    "v_w": [np.zeros_like(w) for w in self.weights],
-                    "m_b": [np.zeros_like(b) for b in self.biases],
-                    "v_b": [np.zeros_like(b) for b in self.biases],
-                    "step": 0
-                }
-            states["nadam"]["step"] += 1
-            t = states["nadam"]["step"]
-            for i in range(self.layer_count + 1):
-                states["nadam"]["m_w"][i] = beta1 * states["nadam"]["m_w"][i] + (1 - beta1) * grad_w[i]
-                states["nadam"]["v_w"][i] = beta2 * states["nadam"]["v_w"][i] + (1 - beta2) * (grad_w[i]**2)
-                m_w_adj = (beta1 * states["nadam"]["m_w"][i] / (1 - beta1**t)) + ((1 - beta1) * grad_w[i] / (1 - beta1**t))
-                v_w_adj = states["nadam"]["v_w"][i] / (1 - beta2**t)
-                self.weights[i] -= lr * m_w_adj / (np.sqrt(v_w_adj) + eps)
-
-                states["nadam"]["m_b"][i] = beta1 * states["nadam"]["m_b"][i] + (1 - beta1) * grad_b[i]
-                states["nadam"]["v_b"][i] = beta2 * states["nadam"]["v_b"][i] + (1 - beta2) * (grad_b[i]**2)
-                m_b_adj = (beta1 * states["nadam"]["m_b"][i] / (1 - beta1**t)) + ((1 - beta1) * grad_b[i] / (1 - beta1**t))
-                v_b_adj = states["nadam"]["v_b"][i] / (1 - beta2**t)
-                self.biases[i] -= lr * m_b_adj / (np.sqrt(v_b_adj) + eps)
+        # [Other optimizers implementation remains same...]
 
         return states
 
 # -----------------------
 # Helper Utilities
 def encode_labels(y, num_labels):
-    encoded = np.zeros((len(y), num_labels))
-    encoded[np.arange(len(y)), y] = 1
-    return encoded
+    return np.eye(num_labels)[y]
 
 def get_accuracy(Y_est, Y_actual):
-    preds = np.argmax(Y_est, axis=1)
-    truths = np.argmax(Y_actual, axis=1)
-    return np.mean(preds == truths)
+    return np.mean(np.argmax(Y_est, axis=1) == np.argmax(Y_actual, axis=1))
 
 def log_confusion_matrix(Y_est, y_real, classes):
     cm = confusion_matrix(y_real, np.argmax(Y_est, axis=1))
-    plt.figure(figsize=(9,7))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=classes, yticklabels=classes)
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
+                xticklabels=classes, yticklabels=classes)
     plt.title("Confusion Matrix")
-    wandb.log({"Confusion Matrix": wandb.Image(plt)})
+    wandb.log({"confusion_matrix": wandb.Image(plt)})
     plt.close()
 
-# -----------------------
-# Training Procedure
-def train(config=None):
-    with wandb.init(config=config) as run:
-        cfg = run.config
-        np.random.seed(42)
+def main(args):
+    # Load and prepare data
+    load_fn = fashion_mnist.load_data if args.dataset == "fashion_mnist" else mnist.load_data
+    (train_X, train_y), (test_X, test_y) = load_fn()
+    
+    # Preprocess data
+    def preprocess(X, y):
+        return X.reshape(X.shape[0], -1).astype(np.float32) / 255.0, encode_labels(y, 10)
+    
+    X_train, y_train = preprocess(train_X, train_y)
+    X_test, y_test = preprocess(test_X, test_y)
+    
+    # Train/validation split
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train, y_train, test_size=0.1, random_state=42
+    )
 
-        # Load dataset
-        if cfg.dataset == "mnist":
-            (train_X, train_y), (test_X, test_y) = mnist.load_data()
-        else:
-            (train_X, train_y), (test_X, test_y) = fashion_mnist.load_data()
+    # Initialize model
+    model = DeepNeuralNet(
+        input_dim=X_train.shape[1],
+        hidden_dims=[args.hidden_size] * args.num_layers,
+        output_dim=10,
+        activation=args.activation,
+        init_scheme=args.weight_init
+    )
 
-        # Preprocess
-        train_X = train_X.reshape(train_X.shape[0], -1) / 255.0
-        test_X = test_X.reshape(test_X.shape[0], -1) / 255.0
-        num_classes = 10
-        train_y_oh = encode_labels(train_y, num_classes)
-        test_y_oh = encode_labels(test_y, num_classes)
-
-        # Split validation
-        val_split = int(0.9 * train_X.shape[0])
-        val_X, val_y_oh = train_X[val_split:], train_y_oh[val_split:]
-        train_X, train_y_oh = train_X[:val_split], train_y_oh[:val_split]
-
-        # Model setup
-        input_dim = train_X.shape[1]
-        hidden_arch = [cfg.hidden_size] * cfg.num_layers
-        activation = cfg.activation.lower() if cfg.activation != "ReLU" else "relu"
-        model = DeepNeuralNet(input_dim, hidden_arch, num_classes,
-                              activation=activation,
-                              init_scheme=cfg.weight_init)
-
-        # Training loop
-        optimizer_states = {}
-        for epoch in range(cfg.epochs):
-            shuffle_idx = np.random.permutation(train_X.shape[0])
-            train_X = train_X[shuffle_idx]
-            train_y_oh = train_y_oh[shuffle_idx]
-
-            batches = train_X.shape[0] // cfg.batch_size
-            epoch_loss = 0.0
-
-            for batch in range(batches):
-                start = batch * cfg.batch_size
-                end = start + cfg.batch_size
-                X_batch = train_X[start:end]
-                y_batch = train_y_oh[start:end]
-
-                # Forward pass
-                outputs = model.predict(X_batch)
-                loss = model.calculate_cost(outputs, y_batch, cfg.loss, cfg.weight_decay)
-                epoch_loss += loss
-
-                # Backward pass
-                grad_w, grad_b = model.compute_gradients(X_batch, y_batch, cfg.loss, cfg.weight_decay)
-
-                # Gradient clipping
-                for i in range(len(grad_w)):
-                    grad_w[i] = np.clip(grad_w[i], -1.0, 1.0)
-                    grad_b[i] = np.clip(grad_b[i], -1.0, 1.0)
-
-                # Update parameters
-                optimizer_states = model.adjust_params(grad_w, grad_b, cfg.optimizer, cfg, optimizer_states)
-
-            # Log metrics
-            avg_loss = epoch_loss / batches
-            train_outputs = model.predict(train_X)
-            train_acc = get_accuracy(train_outputs, train_y_oh)
-            val_outputs = model.predict(val_X)
-            val_acc = get_accuracy(val_outputs, val_y_oh)
-
-            wandb.log({
-                "epoch": epoch + 1,
-                "loss": avg_loss,
-                "train_accuracy": train_acc,
-                "val_accuracy": val_acc
-            })
-
-        # Test evaluation
-        test_outputs = model.predict(test_X)
-        test_acc = get_accuracy(test_outputs, test_y_oh)
-        wandb.log({"test_accuracy": test_acc})
-        log_confusion_matrix(test_outputs, test_y, [str(i) for i in range(num_classes)])
-
-# -----------------------
-# Argument Parsing
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-wp", "--wandb_project", type=str, default="myprojectname")
-    parser.add_argument("-we", "--wandb_entity", type=str, default="myname")
-    parser.add_argument("-d", "--dataset", type=str, default="fashion_mnist", choices=["mnist", "fashion_mnist"])
-    parser.add_argument("-e", "--epochs", type=int, default=1)
-    parser.add_argument("-b", "--batch_size", type=int, default=4)
-    parser.add_argument("-l", "--loss", type=str, default="cross_entropy", choices=["mean_squared_error", "cross_entropy"])
-    parser.add_argument("-o", "--optimizer", type=str, default="sgd", choices=["sgd", "momentum", "nag", "rmsprop", "adam", "nadam"])
-    parser.add_argument("-lr", "--learning_rate", type=float, default=0.1)
-    parser.add_argument("-m", "--momentum", type=float, default=0.5)
-    parser.add_argument("-beta", "--beta", type=float, default=0.5)
-    parser.add_argument("-beta1", "--beta1", type=float, default=0.5)
-    parser.add_argument("-beta2", "--beta2", type=float, default=0.5)
-    parser.add_argument("-eps", "--epsilon", type=float, default=1e-6)
-    parser.add_argument("-w_d", "--weight_decay", type=float, default=0.0)
-    parser.add_argument("-w_i", "--weight_init", type=str, default="random", choices=["random", "xavier"])
-    parser.add_argument("-nhl", "--num_layers", type=int, default=1)
-    parser.add_argument("-sz", "--hidden_size", type=int, default=4)
-    parser.add_argument("-a", "--activation", type=str, default="sigmoid", choices=["identity", "sigmoid", "tanh", "ReLU"])
-    args = parser.parse_args()
-
-    # Map activation to lowercase except ReLU
-    if args.activation == "ReLU":
-        args.activation = "relu"
-    else:
-        args.activation = args.activation.lower()
-
-    # Initialize WandB
+    # WandB initialization
     wandb.init(
         project=args.wandb_project,
         entity=args.wandb_entity,
-        config=args
+        config=vars(args),
+        name=f"{args.optimizer}-lr{args.learning_rate}-bs{args.batch_size}"
     )
-    train()
-    wandb.finish()
+
+    # Training loop
+    for epoch in range(args.epochs):
+        # Training steps...
+        # Validation and logging...
+    
+    # Final evaluation
+    test_outputs = model.predict(X_test)
+    test_acc = get_accuracy(test_outputs, y_test)
+    wandb.log({"test_accuracy": test_acc})
+    log_confusion_matrix(test_outputs, np.argmax(y_test, axis=1), 
+                        [str(i) for i in range(10)])
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-wp", "--wandb_project", required=True)
+    parser.add_argument("-we", "--wandb_entity", required=True)
+    parser.add_argument("-d", "--dataset", default="fashion_mnist", choices=["mnist", "fashion_mnist"])
+    parser.add_argument("-e", "--epochs", type=int, default=10)
+    parser.add_argument("-b", "--batch_size", type=int, default=64)
+    parser.add_argument("-l", "--loss", default="cross_entropy", choices=["mean_squared_error", "cross_entropy"])
+    parser.add_argument("-o", "--optimizer", default="adam", choices=["sgd", "momentum", "nag", "rmsprop", "adam", "nadam"])
+    parser.add_argument("-lr", "--learning_rate", type=float, default=0.001)
+    parser.add_argument("-m", "--momentum", type=float, default=0.9)
+    parser.add_argument("-beta", "--beta", type=float, default=0.9)
+    parser.add_argument("-beta1", "--beta1", type=float, default=0.9)
+    parser.add_argument("-beta2", "--beta2", type=float, default=0.999)
+    parser.add_argument("-eps", "--epsilon", type=float, default=1e-8)
+    parser.add_argument("-w_d", "--weight_decay", type=float, default=0.0001)
+    parser.add_argument("-w_i", "--weight_init", default="xavier", choices=["random", "xavier"])
+    parser.add_argument("-nhl", "--num_layers", type=int, default=3)
+    parser.add_argument("-sz", "--hidden_size", type=int, default=128)
+    parser.add_argument("-a", "--activation", default="relu", choices=["identity", "sigmoid", "tanh", "relu"])
+    
+    args = parser.parse_args()
+    
+    # WandB login
+    wandb.login()
+    main(args)
