@@ -90,7 +90,7 @@ All experiments are automatically logged to Weights & Biases, allowing you to:
 - Reproduce experiments
 
 
-## Here’s an example of command-line usage:
+## Here’s an example of command-line usage(Using Google Colab):
 
 ```bash
 
