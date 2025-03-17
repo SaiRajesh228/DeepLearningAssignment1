@@ -1,8 +1,10 @@
+
+
+# DeepLearningAssignment1
+
 ## Report : https://wandb.ai/karapa-rajesh-iit-madras/DeepLearning/reports/DA6401-Assignment-1--VmlldzoxMTc3MTkyMA?accessToken=8rf7kfv3i5944oiu66rcqf2pi0al7d9dpe7jsla8i4pyo5u7jdupubz50gj9vb5k
 
 ## Github Repo : https://github.com/SaiRajesh228/DeepLearningAssignment1/
-
-# DeepLearningAssignment1
 
 This project implements a deep neural network for classifying the Fashion MNIST dataset, complete with L2 regularization and several optimization techniques. All experiments are tracked using [Weights & Biases (wandb)](https://wandb.ai).
 
