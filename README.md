@@ -1,6 +1,6 @@
-# Report : https://wandb.ai/karapa-rajesh-iit-madras/DeepLearning/reports/DA6401-Assignment-1--VmlldzoxMTc3MTkyMA?accessToken=8rf7kfv3i5944oiu66rcqf2pi0al7d9dpe7jsla8i4pyo5u7jdupubz50gj9vb5k
+## Report : https://wandb.ai/karapa-rajesh-iit-madras/DeepLearning/reports/DA6401-Assignment-1--VmlldzoxMTc3MTkyMA?accessToken=8rf7kfv3i5944oiu66rcqf2pi0al7d9dpe7jsla8i4pyo5u7jdupubz50gj9vb5k
 
-# Github Repo : https://github.com/SaiRajesh228/DeepLearningAssignment1/
+## Github Repo : https://github.com/SaiRajesh228/DeepLearningAssignment1/
 
 # DeepLearningAssignment1
 
